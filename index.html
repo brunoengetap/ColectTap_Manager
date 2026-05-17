@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.1</title>
+<title>ColectTap Manager v1.2</title>
 <style>
 :root{--bg:#0d1b2a;--surf:#16283d;--surf2:#1e3450;--surf3:#243d5c;--border:#2a4a6e;--accent:#0ea5e9;--ok:#22c55e;--warn:#f59e0b;--danger:#ef4444;--pend:#a78bfa;--text:#e8f4ff;--text2:#7fb3d0;--text3:#3d6487}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -64,8 +64,9 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.1</p>
-  <input type="password" id="pin-input" maxlength="4" placeholder="PIN" oninput="if(this.value.length===4)doLogin()">
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.2</p>
+  <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
+  <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
   <p id="login-err" style="color:var(--danger);font-size:13px;min-height:18px"></p>
   <p style="color:var(--text3);font-size:11px;margin-top:8px">Demo: PIN 9999 · Configure GAS_URL_MANAGER no código</p>
@@ -76,7 +77,8 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap v1.1</div>
+      <div class="version">ColectTap v1.2</div>
+      <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard')">📊 Dashboard</div>
         <div class="menu-item" onclick="showView('clientes')">🏢 Clientes / Leads</div>
@@ -185,43 +187,86 @@ tr:hover td{background:rgba(14,165,233,.05)}
 // ─────────────────────────────────────────────────────────────
 // CONFIGURAÇÃO — edite GAS_URL_MANAGER para apontar ao GAS
 // ─────────────────────────────────────────────────────────────
-const GAS_URL_MANAGER = 'https://script.google.com/macros/s/AKfycbxtZ7yn546VcfUMzGBFjhVH_qg7q7XGULvmomYr3wpkvuB5-kReJCPk28ffMXgw76VF/exec'; // Cole aqui a URL do GAS
+const GAS_URL_MANAGER = 'https://script.google.com/macros/s/AKfycbyHl67vuH9ViqEE1ODUGywPm65r5lRQB3peMdKyZJJIUUuRjHKXDC-zz5prkqLB-zf6/exec'; // Cole aqui a URL do GAS
 
 const DEMO_MODE = !GAS_URL_MANAGER;
 let TOKEN_PIN   = '';
+let _loginInProgress = false;
+
+// ── Helpers seguros contra TypeError em dados do GAS/Sheets ──
+function s(v) { return String(v == null ? '' : v).trim(); }
+function lower(v) { return s(v).toLowerCase(); }
 
 // Cache local
 const CACHE = { clientes:[], tecnicos:[], os:[], coletas:[] };
 let _modalOnConfirm = null;
 
 // ─────────────────────────────────────────────────────────────
-// API
+// STATUS GAS
+// ─────────────────────────────────────────────────────────────
+function setGASStatusLogin(estado, texto) {
+  const el = document.getElementById('gas-status-login');
+  if (!el) return;
+  const cores = { ok:'var(--ok)', erro:'var(--danger)', spin:'var(--warn)', info:'var(--text3)' };
+  el.style.color = cores[estado] || cores.info;
+  el.textContent = texto;
+}
+function setGASStatusApp(texto, ok) {
+  const el = document.getElementById('gas-status-app');
+  if (!el) return;
+  el.textContent = 'GAS: ' + texto;
+  el.style.color = ok ? 'var(--ok)' : 'var(--danger)';
+}
+
+// ─────────────────────────────────────────────────────────────
+// API — robusta: timeout, validação HTTP, JSON seguro, sem mascarar erros
 // ─────────────────────────────────────────────────────────────
 async function api(action, params={}) {
   if (DEMO_MODE) return demoDados(action, params);
   try {
-    // GET com query string — nunca dispara preflight CORS
     const data = JSON.stringify({ ...params, action, pin: TOKEN_PIN });
     const encoded = encodeURIComponent(data);
     const url = GAS_URL_MANAGER + '?payload=' + encoded;
-    let r;
-    if (url.length < 7500) {
-      // GET simples — sem preflight
-      r = await fetch(url, { redirect: 'follow' });
-    } else {
-      // Payload grande → POST com URLSearchParams (sem Content-Type: json)
-      const form = new URLSearchParams({ payload: data });
-      r = await fetch(GAS_URL_MANAGER, { method: 'POST', body: form, redirect: 'follow' });
+
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 15000);
+
+    let resp;
+    try {
+      if (url.length < 7500) {
+        resp = await fetch(url, { redirect: 'follow', signal: controller.signal });
+      } else {
+        const form = new URLSearchParams({ payload: data });
+        resp = await fetch(GAS_URL_MANAGER, { method: 'POST', body: form, redirect: 'follow', signal: controller.signal });
+      }
+    } finally {
+      clearTimeout(tid);
     }
-    return await r.json();
+
+    if (!resp.ok) {
+      return { status:'erro', mensagem: 'HTTP ' + resp.status };
+    }
+
+    let json;
+    try {
+      json = await resp.json();
+    } catch(_) {
+      return { status:'erro', mensagem: 'Resposta inválida do GAS (não é JSON)' };
+    }
+
+    if (!json || typeof json !== 'object') {
+      return { status:'erro', mensagem: 'Resposta inesperada do GAS' };
+    }
+
+    return json;
   } catch(e) {
-    return { status:'erro', mensagem: e.message };
+    return { status:'erro', mensagem: e.message || 'Falha de rede' };
   }
 }
 
 function demoDados(action, params) {
-  // Demo local sem GAS
   switch(action) {
+    case 'healthCheck':     return { status:'ok', version:'demo', ts: new Date().toISOString() };
     case 'getTecnicos':     return { status:'ok', tecnicos: CACHE.tecnicos.length ? CACHE.tecnicos : [{id_tecnico:'TEC-001',nome:'Fernando Guimarães',cargo:'Eng. Inspeção',pin:'5678',ativo:'true'}] };
     case 'getClientesLeads':return { status:'ok', clientes: CACHE.clientes.length ? CACHE.clientes : [{id_cliente:'CLI-ING',nome:'Inglesa — Mineração',cnpj:'00.000.000/0001-00',contato:'João',status_lead:'cliente'}] };
     case 'getOSColect':     return { status:'ok', os: CACHE.os.length ? CACHE.os : [{id_os:'LNR-2026-001',numero_os:'LNR-001',cliente:'Inglesa — Mineração',descricao:'Levantamento NR-13',data_abertura:'2026-05-13',status:'ativa'}] };
@@ -239,30 +284,86 @@ function demoDados(action, params) {
 // ─────────────────────────────────────────────────────────────
 // LOGIN
 // ─────────────────────────────────────────────────────────────
-function doLogin() {
+async function doLogin() {
+  if (_loginInProgress) return;
   const pin = document.getElementById('pin-input').value.trim();
-  if (!pin || pin.length < 4) { document.getElementById('login-err').textContent = 'PIN deve ter 4 dígitos'; return; }
-  if (DEMO_MODE && pin === '9999') { TOKEN_PIN = pin; iniciarApp(); return; }
-  if (DEMO_MODE) { document.getElementById('login-err').textContent = 'Demo: use PIN 9999'; return; }
-  TOKEN_PIN = pin;
-  api('validarPIN', {pin}).then(r => {
-    if (r.valido) iniciarApp();
-    else document.getElementById('login-err').textContent = r.mensagem || 'PIN inválido';
-  }).catch(() => { TOKEN_PIN = pin; iniciarApp(); });
+  if (!pin || pin.length < 4) {
+    document.getElementById('login-err').textContent = 'PIN deve ter 4 dígitos';
+    return;
+  }
+
+  if (DEMO_MODE) {
+    if (pin === '9999') { TOKEN_PIN = pin; iniciarApp(); return; }
+    document.getElementById('login-err').textContent = 'Demo: use PIN 9999';
+    return;
+  }
+
+  _loginInProgress = true;
+  document.getElementById('login-err').textContent = '';
+  setGASStatusLogin('spin', 'Autenticando…');
+
+  try {
+    const r = await api('validarPIN', { pin, app: 'manager' });
+
+    // Nunca entrar em caso de erro
+    if (!r || r.status === 'erro' || r.valido === false) {
+      document.getElementById('login-err').textContent = r?.mensagem || 'PIN inválido ou GAS indisponível';
+      setGASStatusLogin('erro', 'Falha na autenticação');
+      return;
+    }
+
+    if (r.status === 'ok' && r.valido === true) {
+      TOKEN_PIN = pin;
+      setGASStatusLogin('ok', 'Autenticado');
+      iniciarApp();
+      return;
+    }
+
+    // Resposta inesperada — não liberar acesso
+    document.getElementById('login-err').textContent = 'Resposta inesperada do GAS. Tente novamente.';
+    setGASStatusLogin('erro', 'Resposta inválida');
+
+  } catch(e) {
+    document.getElementById('login-err').textContent = 'Falha de rede: ' + (e.message || 'verifique a conexão');
+    setGASStatusLogin('erro', 'Erro de rede');
+  } finally {
+    _loginInProgress = false;
+  }
 }
 
 function logout() {
   TOKEN_PIN = '';
+  _loginInProgress = false;
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('pin-input').value = '';
   document.getElementById('login-err').textContent = '';
+  verificarGAS();
 }
 
 function iniciarApp() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   carregarTudo();
+}
+
+// ─────────────────────────────────────────────────────────────
+// HEALTH CHECK — verifica GAS na tela de login
+// ─────────────────────────────────────────────────────────────
+async function verificarGAS() {
+  if (DEMO_MODE) { setGASStatusLogin('info', 'Modo demo local (sem GAS configurada)'); return; }
+  setGASStatusLogin('spin', 'Verificando GAS…');
+  try {
+    const r = await api('healthCheck');
+    if (r && r.status === 'ok') {
+      const ver = r.version ? ' (' + r.version + ')' : '';
+      setGASStatusLogin('ok', 'GAS conectada ✓' + ver);
+    } else {
+      setGASStatusLogin('erro', 'GAS respondeu com erro');
+    }
+  } catch(e) {
+    setGASStatusLogin('erro', 'Falha ao conectar GAS');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -276,72 +377,125 @@ function showView(id) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// CARREGAR DADOS
+// CARREGAR DADOS — allSettled para não bloquear por falha parcial
 // ─────────────────────────────────────────────────────────────
 async function carregarTudo() {
-  await Promise.all([
+  // Atualiza status GAS no app
+  if (!DEMO_MODE) {
+    api('healthCheck').then(r => {
+      if (r && r.status === 'ok') setGASStatusApp('conectada ✓' + (r.version ? ' ' + r.version : ''), true);
+      else setGASStatusApp('erro', false);
+    }).catch(() => setGASStatusApp('indisponível', false));
+  } else {
+    setGASStatusApp('demo local', true);
+  }
+
+  const results = await Promise.allSettled([
     carregarClientes(),
     carregarTecnicos(),
     carregarOS(),
     carregarColetas(),
   ]);
+
+  // Log de falhas parciais sem bloquear o dashboard
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error('carregarTudo — falha no item ' + i + ':', r.reason);
+    }
+  });
+
   renderDashboard();
 }
 
+// ─────────────────────────────────────────────────────────────
+// CARREGAR CLIENTES — com tratamento de erro na tabela
+// ─────────────────────────────────────────────────────────────
 async function carregarClientes() {
-  const r = await api('getClientesLeads');
-  CACHE.clientes = r.clientes || [];
   const tbody = document.getElementById('tbody-clientes');
-  if (!CACHE.clientes.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Nenhum cliente cadastrado</td></tr>'; return; }
-  tbody.innerHTML = CACHE.clientes.map(c => `
-    <tr data-search="${(c.nome||'').toLowerCase()} ${(c.cnpj||'').toLowerCase()}">
-      <td>${c.nome||'—'}</td><td>${c.cnpj||'—'}</td><td>${c.contato||c.email||'—'}</td>
-      <td><span class="pill ${c.status_lead==='cliente'?'pill-ok':'pill-warn'}">${c.status_lead||'lead'}</span></td>
-      <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarCliente('${c.id_cliente}')">✏️</button></td>
-    </tr>`).join('');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
+  try {
+    const r = await api('getClientesLeads');
+    if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar clientes');
+    CACHE.clientes = r.clientes || [];
+    if (!CACHE.clientes.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Nenhum cliente cadastrado</td></tr>';
+      return;
+    }
+    tbody.innerHTML = CACHE.clientes.map(c => `
+      <tr data-search="${lower(c.nome)} ${lower(c.cnpj)} ${lower(c.contato)}">
+        <td>${s(c.nome)||'—'}</td><td>${s(c.cnpj)||'—'}</td><td>${s(c.contato)||s(c.email)||'—'}</td>
+        <td><span class="pill ${s(c.status_lead)==='cliente'?'pill-ok':'pill-warn'}">${s(c.status_lead)||'lead'}</span></td>
+        <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarCliente('${s(c.id_cliente)}')">✏️</button></td>
+      </tr>`).join('');
+  } catch(e) {
+    console.error('carregarClientes:', e);
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger)">Erro ao carregar clientes: ${e.message}</td></tr>`;
+  }
 }
 
 async function carregarTecnicos() {
-  const r = await api('getTecnicos');
-  CACHE.tecnicos = r.tecnicos || [];
   const tbody = document.getElementById('tbody-tecnicos');
-  if (!CACHE.tecnicos.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Nenhum técnico cadastrado</td></tr>'; return; }
-  tbody.innerHTML = CACHE.tecnicos.map(t => `
-    <tr data-search="${(t.nome||'').toLowerCase()} ${(t.cargo||'').toLowerCase()}">
-      <td>${t.nome||'—'}</td><td>${t.cargo||'—'}</td><td>••••</td>
-      <td><span class="pill ${t.ativo==='true'||t.ativo===true?'pill-ok':'pill-warn'}">${t.ativo==='true'||t.ativo===true?'Ativo':'Inativo'}</span></td>
-      <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarTecnico('${t.id_tecnico}')">✏️</button></td>
-    </tr>`).join('');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
+  try {
+    const r = await api('getTecnicos');
+    if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar técnicos');
+    CACHE.tecnicos = r.tecnicos || [];
+    if (!CACHE.tecnicos.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text3)">Nenhum técnico cadastrado</td></tr>'; return; }
+    tbody.innerHTML = CACHE.tecnicos.map(t => `
+      <tr data-search="${lower(t.nome)} ${lower(t.cargo)}">
+        <td>${s(t.nome)||'—'}</td><td>${s(t.cargo)||'—'}</td><td>••••</td>
+        <td><span class="pill ${s(t.ativo)==='true'?'pill-ok':'pill-warn'}">${s(t.ativo)==='true'?'Ativo':'Inativo'}</span></td>
+        <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarTecnico('${s(t.id_tecnico)}')">✏️</button></td>
+      </tr>`).join('');
+  } catch(e) {
+    console.error('carregarTecnicos:', e);
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--danger)">Erro ao carregar técnicos: ${e.message}</td></tr>`;
+  }
 }
 
 async function carregarOS() {
-  const r = await api('getOSColect');
-  CACHE.os = r.os || [];
   const tbody = document.getElementById('tbody-os');
-  if (!CACHE.os.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Nenhuma OS</td></tr>'; return; }
-  tbody.innerHTML = CACHE.os.map(o => `
-    <tr data-search="${(o.numero_os||'').toLowerCase()} ${(o.cliente||'').toLowerCase()}">
-      <td>${o.numero_os||'—'}</td><td>${o.cliente||'—'}</td><td>${o.descricao||'—'}</td>
-      <td>${o.data_abertura||'—'}</td>
-      <td><span class="pill ${o.status==='ativa'?'pill-ok':'pill-gray'}">${o.status||'—'}</span></td>
-      <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarOS('${o.id_os}')">✏️</button></td>
-    </tr>`).join('');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
+  try {
+    const r = await api('getOSColect');
+    if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar OS');
+    CACHE.os = r.os || [];
+    if (!CACHE.os.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Nenhuma OS</td></tr>'; return; }
+    tbody.innerHTML = CACHE.os.map(o => `
+      <tr data-search="${lower(o.numero_os)} ${lower(o.cliente)}">
+        <td>${s(o.numero_os)||'—'}</td><td>${s(o.cliente)||'—'}</td><td>${s(o.descricao)||'—'}</td>
+        <td>${s(o.data_abertura)||'—'}</td>
+        <td><span class="pill ${s(o.status)==='ativa'?'pill-ok':'pill-gray'}">${s(o.status)||'—'}</span></td>
+        <td><button class="btn btn-ghost" style="font-size:11px" onclick="editarOS('${s(o.id_os)}')">✏️</button></td>
+      </tr>`).join('');
+  } catch(e) {
+    console.error('carregarOS:', e);
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger)">Erro ao carregar OS: ${e.message}</td></tr>`;
+  }
 }
 
 async function carregarColetas() {
-  const r = await api('getEquipamentos');
-  CACHE.coletas = r.equipamentos || [];
-  renderColetas(CACHE.coletas);
-  renderPendencias(CACHE.coletas);
-  renderFotos(CACHE.coletas);
+  const tbody = document.getElementById('tbody-coletas');
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
+  try {
+    const r = await api('getEquipamentos');
+    if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar coletas');
+    CACHE.coletas = r.equipamentos || [];
+    renderColetas(CACHE.coletas);
+    renderPendencias(CACHE.coletas);
+    renderFotos(CACHE.coletas);
+  } catch(e) {
+    console.error('carregarColetas:', e);
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--danger)">Erro ao carregar coletas: ${e.message}</td></tr>`;
+  }
 }
 
 let _filtroColetas = {};
 function filtrarColetas(val, campo) {
   _filtroColetas[campo] = val.toLowerCase();
   const filtrado = CACHE.coletas.filter(c => {
-    if (_filtroColetas.tipo && !(c.tipo||'').toLowerCase().includes(_filtroColetas.tipo)) return false;
-    if (_filtroColetas.enq && !(c.enquadra_nr13||'').toLowerCase().includes(_filtroColetas.enq.toLowerCase())) return false;
+    if (_filtroColetas.tipo && !lower(c.tipo).includes(_filtroColetas.tipo)) return false;
+    if (_filtroColetas.enq && !lower(c.enquadra_nr13).includes(_filtroColetas.enq)) return false;
     return true;
   });
   renderColetas(filtrado);
@@ -351,21 +505,23 @@ function renderColetas(lista) {
   const tbody = document.getElementById('tbody-coletas');
   if (!lista.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Nenhuma coleta encontrada</td></tr>'; return; }
   tbody.innerHTML = lista.map(c => {
-    const enquadClass = (c.enquadra_nr13||'').includes('Não enquadra') ? 'pill-warn' : (c.enquadra_nr13||'').includes('Sim') ? 'pill-ok' : 'pill-gray';
-    const docClass = (c.status_documentacao||'').includes('completa') ? 'pill-ok' : 'pill-warn';
-    const driveBtn = c.drive_folder_url ? `<a href="${c.drive_folder_url}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">📁</a>` : '—';
-    return `<tr data-search="${(c.tag||'').toLowerCase()} ${(c.cliente||'').toLowerCase()} ${(c.numero_os||'').toLowerCase()}">
-      <td><strong>${c.tag||'—'}</strong></td>
-      <td>${tipoLabel(c.tipo)}</td>
-      <td>${c.cliente||'—'}</td>
-      <td>${c.numero_os||'—'}</td>
-      <td><span class="pill ${enquadClass}" style="font-size:10px">${(c.enquadra_nr13||'—').substring(0,30)}</span></td>
-      <td><span class="pill ${docClass}" style="font-size:10px">${(c.status_documentacao||'—').substring(0,20)}</span></td>
-      <td>${c.quantidade_fotos||0}</td>
+    const enq = s(c.enquadra_nr13);
+    const doc = s(c.status_documentacao);
+    const enquadClass = enq.includes('Não enquadra') ? 'pill-warn' : enq.includes('Sim') ? 'pill-ok' : 'pill-gray';
+    const docClass = doc.includes('completa') ? 'pill-ok' : 'pill-warn';
+    const driveBtn = c.drive_folder_url ? `<a href="${s(c.drive_folder_url)}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">📁</a>` : '—';
+    return `<tr data-search="${lower(c.tag)} ${lower(c.cliente)} ${lower(c.numero_os)}">
+      <td><strong>${s(c.tag)||'—'}</strong></td>
+      <td>${tipoLabel(s(c.tipo))}</td>
+      <td>${s(c.cliente)||'—'}</td>
+      <td>${s(c.numero_os)||'—'}</td>
+      <td><span class="pill ${enquadClass}" style="font-size:10px">${enq.substring(0,30)||'—'}</span></td>
+      <td><span class="pill ${docClass}" style="font-size:10px">${doc.substring(0,20)||'—'}</span></td>
+      <td>${s(c.quantidade_fotos)||0}</td>
       <td>${driveBtn}</td>
       <td>
-        <button class="btn btn-ghost" style="font-size:11px" onclick="verDetalhes('${c.id_equipamento_colect}')">👁</button>
-        <button class="btn btn-ghost" style="font-size:11px" onclick="revisar('${c.id_equipamento_colect}')">✅</button>
+        <button class="btn btn-ghost" style="font-size:11px" onclick="verDetalhes('${s(c.id_equipamento_colect)}')">👁</button>
+        <button class="btn btn-ghost" style="font-size:11px" onclick="revisar('${s(c.id_equipamento_colect)}')">✅</button>
       </td>
     </tr>`;
   }).join('');
@@ -373,7 +529,7 @@ function renderColetas(lista) {
 
 function renderPendencias(lista) {
   const pendentes = lista.filter(c => {
-    const doc = (c.status_documentacao||'').toLowerCase();
+    const doc = lower(c.status_documentacao);
     return doc.includes('parcial') || doc.includes('não localizada') || doc.includes('extraviada') || doc.includes('aguardando');
   });
   const el = document.getElementById('content-pendencias');
@@ -382,33 +538,34 @@ function renderPendencias(lista) {
     <table><thead><tr><th>TAG</th><th>Cliente</th><th>OS</th><th>Situação Docs</th><th>Ação</th></tr></thead>
     <tbody>${pendentes.map(c => `
       <tr>
-        <td><strong>${c.tag||'—'}</strong></td>
-        <td>${c.cliente||'—'}</td>
-        <td>${c.numero_os||'—'}</td>
-        <td><span class="pill pill-warn">${(c.status_documentacao||'—').substring(0,25)}</span></td>
-        <td><button class="btn btn-ghost" style="font-size:11px" onclick="revisar('${c.id_equipamento_colect}')">Revisar</button></td>
+        <td><strong>${s(c.tag)||'—'}</strong></td>
+        <td>${s(c.cliente)||'—'}</td>
+        <td>${s(c.numero_os)||'—'}</td>
+        <td><span class="pill pill-warn">${s(c.status_documentacao).substring(0,25)||'—'}</span></td>
+        <td><button class="btn btn-ghost" style="font-size:11px" onclick="revisar('${s(c.id_equipamento_colect)}')">Revisar</button></td>
       </tr>`).join('')}</tbody></table>`;
 }
 
 function renderFotos(lista) {
-  const comFotos = lista.filter(c => c.drive_folder_url || (parseInt(c.quantidade_fotos)||0) > 0);
+  const comFotos = lista.filter(c => c.drive_folder_url || (parseInt(s(c.quantidade_fotos))||0) > 0);
   const el = document.getElementById('content-fotos');
   if (!comFotos.length) { el.innerHTML = '<div class="info-box">Nenhuma coleta com fotos no Drive encontrada.</div>'; return; }
   el.innerHTML = `<table><thead><tr><th>TAG</th><th>OS</th><th>Qtd Fotos</th><th>Pasta Drive</th><th>Primeira Foto</th></tr></thead>
     <tbody>${comFotos.map(c => `
       <tr>
-        <td><strong>${c.tag||'—'}</strong></td>
-        <td>${c.numero_os||'—'}</td>
-        <td>${c.quantidade_fotos||0}</td>
-        <td>${c.drive_folder_url ? `<a href="${c.drive_folder_url}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">📁 Abrir</a>` : '—'}</td>
-        <td>${c.primeira_foto_url ? `<a href="${c.primeira_foto_url}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">🖼️ Ver</a>` : '—'}</td>
+        <td><strong>${s(c.tag)||'—'}</strong></td>
+        <td>${s(c.numero_os)||'—'}</td>
+        <td>${s(c.quantidade_fotos)||0}</td>
+        <td>${c.drive_folder_url ? `<a href="${s(c.drive_folder_url)}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">📁 Abrir</a>` : '—'}</td>
+        <td>${c.primeira_foto_url ? `<a href="${s(c.primeira_foto_url)}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">🖼️ Ver</a>` : '—'}</td>
       </tr>`).join('')}</tbody></table>`;
 }
 
 function renderDashboard() {
-  const pendDoc = CACHE.coletas.filter(c => (c.status_documentacao||'').toLowerCase().includes('parcial')||
-    (c.status_documentacao||'').toLowerCase().includes('não localizada')||
-    (c.status_documentacao||'').toLowerCase().includes('aguardando')).length;
+  const pendDoc = CACHE.coletas.filter(c => {
+    const doc = lower(c.status_documentacao);
+    return doc.includes('parcial') || doc.includes('não localizada') || doc.includes('aguardando');
+  }).length;
 
   document.getElementById('dash-stats').innerHTML = `
     <div class="stat-card"><div class="stat-num">${CACHE.clientes.length}</div><div class="stat-lbl">Clientes / Leads</div></div>
@@ -423,9 +580,9 @@ function renderDashboard() {
     <h3 style="font-size:14px;font-weight:700;color:var(--text2);margin-bottom:10px">Coletas Recentes</h3>
     <table><thead><tr><th>TAG</th><th>Tipo</th><th>OS</th><th>Enquadramento</th><th>Status Docs</th></tr></thead>
     <tbody>${recentes.map(c => `<tr>
-      <td>${c.tag||'—'}</td><td>${tipoLabel(c.tipo)}</td><td>${c.numero_os||'—'}</td>
-      <td>${(c.enquadra_nr13||'—').substring(0,30)}</td>
-      <td>${(c.status_documentacao||'—').substring(0,20)}</td>
+      <td>${s(c.tag)||'—'}</td><td>${tipoLabel(s(c.tipo))}</td><td>${s(c.numero_os)||'—'}</td>
+      <td>${s(c.enquadra_nr13).substring(0,30)||'—'}</td>
+      <td>${s(c.status_documentacao).substring(0,20)||'—'}</td>
     </tr>`).join('')}</tbody></table>` : '';
 }
 
@@ -438,7 +595,7 @@ function tipoLabel(t) {
 
 function filtrarTabela(tableId, termo) {
   const rows = document.querySelectorAll('#' + tableId + ' tbody tr[data-search]');
-  const t = (termo||'').toLowerCase();
+  const t = lower(termo);
   rows.forEach(r => { r.style.display = !t || (r.dataset.search||'').includes(t) ? '' : 'none'; });
 }
 
@@ -456,28 +613,58 @@ function confirmarModal() {
   if (typeof _modalOnConfirm === 'function') _modalOnConfirm();
 }
 
+function mostrarErroModal(msg) {
+  let el = document.getElementById('modal-err');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'modal-err';
+    el.className = 'error-box';
+    document.getElementById('modal-body').prepend(el);
+  }
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
 function abrirModalCliente() {
   abrirModal('Novo Cliente / Lead', `
+    <div id="modal-err" class="error-box" style="display:none"></div>
     <div class="form-field"><label>Nome</label><input id="m-nome" placeholder="Nome da empresa"></div>
     <div class="form-field"><label>CNPJ</label><input id="m-cnpj" placeholder="00.000.000/0001-00"></div>
     <div class="form-field"><label>Contato</label><input id="m-contato" placeholder="Nome do responsável"></div>
     <div class="form-field"><label>E-mail</label><input id="m-email" type="email" placeholder="email@empresa.com"></div>
     <div class="form-field"><label>Status</label><select id="m-status"><option value="lead">Lead</option><option value="cliente">Cliente</option><option value="inativo">Inativo</option></select></div>
   `, async () => {
-    const r = await api('salvarClienteLead', {
-      nome: document.getElementById('m-nome').value,
-      cnpj: document.getElementById('m-cnpj').value,
-      contato: document.getElementById('m-contato').value,
-      email: document.getElementById('m-email').value,
-      status_lead: document.getElementById('m-status').value,
-    });
-    if (r.status === 'ok') { fecharModal(); await carregarClientes(); }
-    else alert('Erro: ' + (r.mensagem||'falha'));
+    const btnOk = document.getElementById('modal-ok');
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando…';
+    try {
+      const r = await api('salvarClienteLead', {
+        nome: document.getElementById('m-nome').value,
+        cnpj: document.getElementById('m-cnpj').value,
+        contato: document.getElementById('m-contato').value,
+        email: document.getElementById('m-email').value,
+        status_lead: document.getElementById('m-status').value,
+      });
+      if (r.status === 'ok') {
+        fecharModal();
+        await carregarClientes();
+        renderDashboard();
+        mostrarFeedback('✅ Cliente salvo com sucesso!');
+      } else {
+        mostrarErroModal('Erro: ' + (r.mensagem || 'falha ao salvar'));
+      }
+    } catch(e) {
+      mostrarErroModal('Erro: ' + (e.message || 'falha de rede'));
+    } finally {
+      btnOk.disabled = false;
+      btnOk.textContent = 'Salvar';
+    }
   });
 }
 
 function abrirModalTecnico() {
   abrirModal('Novo Técnico', `
+    <div id="modal-err" class="error-box" style="display:none"></div>
     <div class="form-field"><label>Nome</label><input id="m-nome" placeholder="Nome completo"></div>
     <div class="form-field"><label>Cargo</label><input id="m-cargo" placeholder="Técnico NR-13, Eng. Inspeção…"></div>
     <div class="form-field"><label>E-mail</label><input id="m-email" type="email" placeholder="email@engetap.com.br"></div>
@@ -485,37 +672,58 @@ function abrirModalTecnico() {
     <div class="info-box" style="font-size:12px">O PIN é usado para login no ColectTap Field.</div>
   `, async () => {
     const pin = document.getElementById('m-pin').value;
-    if (pin.length !== 4) { alert('PIN deve ter 4 dígitos'); return; }
-    const r = await api('salvarTecnico', {
-      nome: document.getElementById('m-nome').value,
-      cargo: document.getElementById('m-cargo').value,
-      email: document.getElementById('m-email').value,
-      pin,
-    });
-    if (r.status === 'ok') { fecharModal(); await carregarTecnicos(); }
-    else alert('Erro: ' + (r.mensagem||'falha'));
+    if (pin.length !== 4) { mostrarErroModal('PIN deve ter 4 dígitos'); return; }
+    const btnOk = document.getElementById('modal-ok');
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando…';
+    try {
+      const r = await api('salvarTecnico', {
+        nome: document.getElementById('m-nome').value,
+        cargo: document.getElementById('m-cargo').value,
+        email: document.getElementById('m-email').value,
+        pin,
+      });
+      if (r.status === 'ok') { fecharModal(); await carregarTecnicos(); mostrarFeedback('✅ Técnico salvo com sucesso!'); }
+      else mostrarErroModal('Erro: ' + (r.mensagem || 'falha ao salvar'));
+    } catch(e) {
+      mostrarErroModal('Erro: ' + (e.message || 'falha de rede'));
+    } finally {
+      btnOk.disabled = false;
+      btnOk.textContent = 'Salvar';
+    }
   });
 }
 
 function abrirModalOS() {
-  const optsCliente = CACHE.clientes.map(c => `<option value="${c.id_cliente}">${c.nome}</option>`).join('');
+  const optsCliente = CACHE.clientes.map(c => `<option value="${s(c.id_cliente)}">${s(c.nome)}</option>`).join('');
   abrirModal('Nova Ordem de Serviço', `
+    <div id="modal-err" class="error-box" style="display:none"></div>
     <div class="form-field"><label>Número da OS</label><input id="m-numeros" placeholder="LNR-001"></div>
     <div class="form-field"><label>Cliente</label><select id="m-cliente">${optsCliente}</select></div>
     <div class="form-field"><label>Descrição</label><input id="m-desc" placeholder="Levantamento NR-13 completo"></div>
     <div class="form-field"><label>Data de Abertura</label><input id="m-data" type="date" value="${new Date().toISOString().substring(0,10)}"></div>
   `, async () => {
     const sel = document.getElementById('m-cliente');
-    const cli = CACHE.clientes.find(c => c.id_cliente === sel.value);
-    const r = await api('salvarOSColect', {
-      numero_os: document.getElementById('m-numeros').value,
-      id_cliente: sel.value,
-      cliente: cli ? cli.nome : '',
-      descricao: document.getElementById('m-desc').value,
-      data_abertura: document.getElementById('m-data').value,
-    });
-    if (r.status === 'ok') { fecharModal(); await carregarOS(); }
-    else alert('Erro: ' + (r.mensagem||'falha'));
+    const cli = CACHE.clientes.find(c => s(c.id_cliente) === sel.value);
+    const btnOk = document.getElementById('modal-ok');
+    btnOk.disabled = true;
+    btnOk.textContent = 'Salvando…';
+    try {
+      const r = await api('salvarOSColect', {
+        numero_os: document.getElementById('m-numeros').value,
+        id_cliente: sel.value,
+        cliente: cli ? s(cli.nome) : '',
+        descricao: document.getElementById('m-desc').value,
+        data_abertura: document.getElementById('m-data').value,
+      });
+      if (r.status === 'ok') { fecharModal(); await carregarOS(); mostrarFeedback('✅ OS salva com sucesso!'); }
+      else mostrarErroModal('Erro: ' + (r.mensagem || 'falha ao salvar'));
+    } catch(e) {
+      mostrarErroModal('Erro: ' + (e.message || 'falha de rede'));
+    } finally {
+      btnOk.disabled = false;
+      btnOk.textContent = 'Salvar';
+    }
   });
 }
 
@@ -524,10 +732,10 @@ function editarTecnico(id) { alert('Edição de técnicos — em desenvolvimento
 function editarOS(id) { alert('Edição de OS — em desenvolvimento. ID: ' + id); }
 
 function verDetalhes(id) {
-  const eq = CACHE.coletas.find(c => c.id_equipamento_colect === id);
+  const eq = CACHE.coletas.find(c => s(c.id_equipamento_colect) === id);
   if (!eq) return alert('Equipamento não encontrado');
-  const campos = Object.entries(eq).filter(([k]) => !k.startsWith('fotos_json') && !k.startsWith('_')).map(([k,v]) => `<tr><td style="color:var(--text2);font-size:12px">${k}</td><td style="font-size:12px">${v||'—'}</td></tr>`).join('');
-  abrirModal('Detalhes — ' + (eq.tag||id), `<table><tbody>${campos}</tbody></table>`, () => fecharModal());
+  const campos = Object.entries(eq).filter(([k]) => !k.startsWith('fotos_json') && !k.startsWith('_')).map(([k,v]) => `<tr><td style="color:var(--text2);font-size:12px">${k}</td><td style="font-size:12px">${s(v)||'—'}</td></tr>`).join('');
+  abrirModal('Detalhes — ' + (s(eq.tag)||id), `<table><tbody>${campos}</tbody></table>`, () => fecharModal());
 }
 
 async function revisar(id) {
@@ -543,14 +751,29 @@ async function revisar(id) {
   alert(r.status === 'ok' ? '✅ Revisão registrada!' : 'Erro: ' + (r.mensagem||'falha'));
 }
 
+// ─────────────────────────────────────────────────────────────
+// FEEDBACK VISUAL
+// ─────────────────────────────────────────────────────────────
+function mostrarFeedback(msg) {
+  let el = document.getElementById('_feedback');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '_feedback';
+    el.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--ok);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;z-index:9999;transition:opacity .4s';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, 2500);
+}
+
 // Fechar modal clicando fora
 document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') fecharModal(); });
 document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
-// Demo mode notice
-if (DEMO_MODE) {
-  document.querySelector('#login-screen p:last-child').style.display = 'block';
-}
+// Verificar GAS ao carregar
+verificarGAS();
 </script>
 </body>
 </html>

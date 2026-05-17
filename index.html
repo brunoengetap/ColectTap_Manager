@@ -185,7 +185,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 // ─────────────────────────────────────────────────────────────
 // CONFIGURAÇÃO — edite GAS_URL_MANAGER para apontar ao GAS
 // ─────────────────────────────────────────────────────────────
-const GAS_URL_MANAGER = 'https://script.google.com/macros/s/AKfycbxkwzGSCOEeVwm3MAiJhfeyDB_EYfScGKU3Rfxej3eInBMchtQeM8FGq2jDU0YSQ9kb/exec'; // Cole aqui a URL do GAS
+const GAS_URL_MANAGER = 'https://script.google.com/macros/s/AKfycbxtZ7yn546VcfUMzGBFjhVH_qg7q7XGULvmomYr3wpkvuB5-kReJCPk28ffMXgw76VF/exec'; // Cole aqui a URL do GAS
 
 const DEMO_MODE = !GAS_URL_MANAGER;
 let TOKEN_PIN   = '';
@@ -200,13 +200,19 @@ let _modalOnConfirm = null;
 async function api(action, params={}) {
   if (DEMO_MODE) return demoDados(action, params);
   try {
-    // URLSearchParams evita preflight CORS (sem Content-Type: application/json)
-    const form = new URLSearchParams();
-    form.append('payload', JSON.stringify({ ...params, action, pin: TOKEN_PIN }));
-    const r = await fetch(GAS_URL_MANAGER, {
-      method: 'POST',
-      body: form
-    });
+    // GET com query string — nunca dispara preflight CORS
+    const data = JSON.stringify({ ...params, action, pin: TOKEN_PIN });
+    const encoded = encodeURIComponent(data);
+    const url = GAS_URL_MANAGER + '?payload=' + encoded;
+    let r;
+    if (url.length < 7500) {
+      // GET simples — sem preflight
+      r = await fetch(url, { redirect: 'follow' });
+    } else {
+      // Payload grande → POST com URLSearchParams (sem Content-Type: json)
+      const form = new URLSearchParams({ payload: data });
+      r = await fetch(GAS_URL_MANAGER, { method: 'POST', body: form, redirect: 'follow' });
+    }
     return await r.json();
   } catch(e) {
     return { status:'erro', mensagem: e.message };

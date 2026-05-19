@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ColectTap Manager v1.5</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#0d1b2a;--surf:#16283d;--surf2:#1e3450;--surf3:#243d5c;--border:#2a4a6e;--accent:#0ea5e9;--ok:#22c55e;--warn:#f59e0b;--danger:#ef4444;--pend:#a78bfa;--text:#e8f4ff;--text2:#7fb3d0;--text3:#3d6487}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -160,6 +161,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
           <select class="filter-select" onchange="filtrarColetas(this.value,'fluxo')"><option value="">Todos os fluxos</option><option value="campo">🔧 Iniciadas pelo Campo</option><option value="documento">📁 Iniciadas por Documento</option></select>
           <select class="filter-select" onchange="filtrarColetas(this.value,'pend')"><option value="">Todas as pendências</option><option value="campo">⚠️ Pendência de campo</option><option value="documental">⚠️ Pendência documental</option></select>
           <button class="btn btn-ghost" onclick="carregarColetas()">🔄 Atualizar</button>
+          <button class="btn btn-ghost" onclick="gerarPDFColetas()" style="color:var(--warn);border-color:var(--warn)">⬇ PDF</button>
         </div>
         <table id="tab-coletas">
           <thead><tr><th>TAG</th><th>Tipo</th><th>Fluxo</th><th>Cliente</th><th>OS</th><th>Enquadramento</th><th>Revisão</th><th>Fotos</th><th>Drive</th><th>Ações</th></tr></thead>
@@ -827,24 +829,33 @@ function abrirModalOS() {
     <div class="form-field"><label>Descrição</label><input id="m-desc" placeholder="Levantamento NR-13 completo"></div>
     <div class="form-field"><label>Data de Abertura</label><input id="m-data" type="date" value="${new Date().toISOString().substring(0,10)}"></div>
   `, async () => {
+    const numOS = document.getElementById('m-numeros').value.trim();
+    if (!numOS) { mostrarErroModal('Número da OS é obrigatório'); return; }
     const sel = document.getElementById('m-cliente');
+    if (!sel.value) { mostrarErroModal('Selecione um cliente'); return; }
     const cli = CACHE.clientes.find(c => s(c.id_cliente) === sel.value);
     const btnOk = document.getElementById('modal-ok');
     btnOk.disabled = true;
     btnOk.textContent = 'Salvando…';
     try {
       const r = await api('salvarOSColect', {
-        numero_os: document.getElementById('m-numeros').value,
+        numero_os: numOS,
         id_cliente: sel.value,
         cliente: cli ? s(cli.nome) : '',
         id_inspetor_resp: document.getElementById('m-insp').value,
         descricao: document.getElementById('m-desc').value,
         data_abertura: document.getElementById('m-data').value,
+        status: 'ativa',
       });
-      if (r.status === 'ok') { fecharModal(); await carregarOS(); mostrarFeedback('✅ OS salva com sucesso!'); }
-      else mostrarErroModal('Erro: ' + (r.mensagem || 'falha ao salvar'));
+      if (r.status === 'ok') {
+        fecharModal();
+        await carregarOS();
+        mostrarFeedback('✅ OS ' + numOS + ' salva com sucesso!');
+      } else {
+        mostrarErroModal('Erro ao salvar OS: ' + (r.mensagem || 'resposta inesperada do GAS'));
+      }
     } catch(e) {
-      mostrarErroModal('Erro: ' + (e.message || 'falha de rede'));
+      mostrarErroModal('Erro de rede: ' + (e.message || 'falha ao comunicar com GAS'));
     } finally {
       btnOk.disabled = false;
       btnOk.textContent = 'Salvar';
@@ -924,7 +935,14 @@ function editarTecnico(id) {
     <div class="form-field"><label>Nome</label><input id="m-nome" value="${s(t.nome).replace(/"/g,'&quot;')}"></div>
     <div class="form-field"><label>Cargo</label><input id="m-cargo" value="${s(t.cargo).replace(/"/g,'&quot;')}"></div>
     <div class="form-field"><label>E-mail</label><input id="m-email" type="email" value="${s(t.email||'').replace(/"/g,'&quot;')}"></div>
-    <div class="form-field"><label>Novo PIN (4 dígitos — deixe em branco para não alterar)</label><input id="m-pin" maxlength="4" placeholder="Ex: 5678" autocomplete="off"></div>
+    <div class="form-field">
+      <label>PIN (4 dígitos)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="m-pin" maxlength="4" type="password" value="${s(t.pin||'')}" placeholder="Ex: 5678" autocomplete="off" style="flex:1;letter-spacing:4px;font-size:18px">
+        <button type="button" onclick="(()=>{const i=document.getElementById('m-pin');const b=document.getElementById('m-pin-eye');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁':'🙈';})()" id="m-pin-eye" style="background:var(--surf2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:16px;flex-shrink:0">👁</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">PIN atual exibido. Altere se quiser trocar.</div>
+    </div>
     <div class="form-field"><label>Status</label>
       <select id="m-ativo">
         <option value="true" ${s(t.ativo)==='true'?'selected':''}>Ativo</option>
@@ -934,8 +952,8 @@ function editarTecnico(id) {
   `, async () => {
     const nome = document.getElementById('m-nome').value.trim();
     if (!nome) { mostrarErroModal('Nome é obrigatório'); return; }
-    const pin = document.getElementById('m-pin').value.trim();
-    if (pin && pin.length !== 4) { mostrarErroModal('PIN deve ter exatamente 4 dígitos ou em branco'); return; }
+    const pin = document.getElementById('m-pin').value.replace(/\D/g,'');
+    if (pin.length > 0 && pin.length !== 4) { mostrarErroModal('PIN deve ter exatamente 4 dígitos'); return; }
     const btnOk = document.getElementById('modal-ok');
     btnOk.disabled = true; btnOk.textContent = 'Salvando…';
     const payload = {
@@ -945,7 +963,7 @@ function editarTecnico(id) {
       email: document.getElementById('m-email').value,
       ativo: document.getElementById('m-ativo').value,
     };
-    if (pin) payload.pin = pin;
+    if (pin.length === 4) payload.pin = pin;
     try {
       const r = await api('atualizarInspetor', payload);
       if (r.status === 'ok') { fecharModal(); await carregarTecnicos(); mostrarFeedback('✅ Inspetor atualizado!'); }
@@ -1183,6 +1201,159 @@ function mostrarFeedback(msg, isError) {
   el.style.opacity = '1';
   clearTimeout(el._t);
   el._t = setTimeout(() => { el.style.opacity = '0'; }, 3000);
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// PDF DE COLETAS — download direto no Manager
+// ─────────────────────────────────────────────────────────────
+function gerarPDFColetas() {
+  if (!window.jspdf) { mostrarFeedback('⚠️ Biblioteca PDF não carregada ainda, tente em instantes.', true); return; }
+  const lista = CACHE.coletas || [];
+  if (!lista.length) { mostrarFeedback('Nenhuma coleta para exportar.', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const PW = 210, ML = 12, MR = 12, CW = PW - ML - MR;
+  const AZUL = [26, 58, 107], AZUL2 = [46, 91, 168], WHITE = [255,255,255];
+  const LGRAY = [240, 244, 250], DARK = [30, 40, 55], TEXT2 = [100, 130, 160];
+
+  const agora = new Date();
+  const dataStr = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  let y = 0;
+  let pageNum = 1;
+
+  function hdr() {
+    doc.setFillColor(...AZUL);
+    doc.rect(0, 0, PW, 18, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...WHITE);
+    doc.text('ColectTap Manager — Relatório de Coletas NR-13', ML, 11);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Engetap Engenharia  ·  ' + dataStr + '  ·  Pág ' + pageNum, PW - MR, 11, { align: 'right' });
+    doc.setFillColor(...AZUL2);
+    doc.rect(0, 17, PW, 1.5, 'F');
+    y = 24;
+  }
+
+  function novasPaginas() {
+    doc.addPage();
+    pageNum++;
+    hdr();
+  }
+
+  function checarY(h) { if (y + h > 282) novasPaginas(); }
+
+  function campo(label, val, x, w, isLast) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...TEXT2);
+    doc.text(String(label).toUpperCase(), x, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...DARK);
+    const valStr = String(val || '—').substring(0, 60);
+    doc.text(valStr, x, y + 4);
+    if (isLast) y += 9;
+  }
+
+  function separador() {
+    doc.setDrawColor(...LGRAY);
+    doc.setLineWidth(0.3);
+    doc.line(ML, y, PW - MR, y);
+    y += 3;
+  }
+
+  hdr();
+
+  // Sumário
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...DARK);
+  doc.text(`Total de equipamentos: ${lista.length}`, ML, y);
+  const enquadrados = lista.filter(c => lower(s(c.enquadra_nr13)) === 'sim').length;
+  doc.text(`Enquadrados NR-13: ${enquadrados}`, ML + 70, y);
+  const comPend = lista.filter(c => s(c.pendencias_campo) || s(c.pendencias_documentais)).length;
+  doc.text(`Com pendências: ${comPend}`, ML + 140, y);
+  y += 8;
+  separador();
+
+  lista.forEach((c, idx) => {
+    checarY(42);
+
+    // Cabeçalho do card
+    doc.setFillColor(...LGRAY);
+    doc.roundedRect(ML, y, CW, 7, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...AZUL);
+    const tag = s(c.tag) || '—';
+    const tipo = s(c.tipo) || '—';
+    doc.text(`${idx + 1}.  ${tag}  ·  ${tipo.toUpperCase()}`, ML + 3, y + 4.8);
+    const fluxoLbl = lower(s(c.modo_coleta_inicial)) === 'documento' ? '📁 Docs' : '🔧 Campo';
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...TEXT2);
+    doc.text(fluxoLbl + '  ·  OS: ' + (s(c.numero_os) || '—'), PW - MR - 3, y + 4.8, { align: 'right' });
+    y += 9;
+
+    // Linha 1: Cliente, Enquadramento, Situação NR-13
+    campo('Cliente', c.cliente, ML, CW / 3, false);
+    campo('Enquadramento', c.enquadra_nr13, ML + CW / 3, CW / 3, false);
+    campo('Situação NR-13', c.situacao_nr13, ML + (CW / 3) * 2, CW / 3, true);
+
+    checarY(10);
+    // Linha 2: Fabricante, Categoria, PMTA
+    campo('Fabricante', c.fabricante, ML, CW / 3, false);
+    campo('Categoria', c.categoria, ML + CW / 3, CW / 3, false);
+    campo('PMTA (kgf/cm²)', c.pmta, ML + (CW / 3) * 2, CW / 3, true);
+
+    checarY(10);
+    // Linha 3: Status Campo, Status Docs, Revisão
+    campo('Status Campo', c.status_coleta_campo, ML, CW / 3, false);
+    campo('Status Docs', c.status_coleta_documentos, ML + CW / 3, CW / 3, false);
+    campo('Revisão', c.status_revisao || 'pendente', ML + (CW / 3) * 2, CW / 3, true);
+
+    // Pendências (se houver)
+    if (s(c.pendencias_campo) || s(c.pendencias_documentais)) {
+      checarY(10);
+      if (s(c.pendencias_campo)) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(239, 68, 68);
+        doc.text('⚠ PENDÊNCIAS CAMPO: ', ML, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...DARK);
+        doc.text(s(c.pendencias_campo).substring(0, 120), ML + 33, y);
+        y += 5;
+      }
+      if (s(c.pendencias_documentais)) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.setTextColor(167, 139, 250);
+        doc.text('⚠ PENDÊNCIAS DOCS: ', ML, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...DARK);
+        doc.text(s(c.pendencias_documentais).substring(0, 120), ML + 31, y);
+        y += 5;
+      }
+    }
+
+    y += 2;
+    separador();
+  });
+
+  // Rodapé da última página
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  doc.setTextColor(...TEXT2);
+  doc.text('Gerado por ColectTap Manager v1.5  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+
+  const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
+  doc.save(nomeArquivo);
+  mostrarFeedback('✅ PDF gerado: ' + nomeArquivo);
 }
 
 // Fechar modal clicando fora

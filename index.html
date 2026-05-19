@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.4</title>
+<title>ColectTap Manager v1.5</title>
 <style>
 :root{--bg:#0d1b2a;--surf:#16283d;--surf2:#1e3450;--surf3:#243d5c;--border:#2a4a6e;--accent:#0ea5e9;--ok:#22c55e;--warn:#f59e0b;--danger:#ef4444;--pend:#a78bfa;--text:#e8f4ff;--text2:#7fb3d0;--text3:#3d6487}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -64,7 +64,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.4</p>
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.5</p>
   <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
   <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
@@ -77,7 +77,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.4</div>
+      <div class="version">ColectTap Manager v1.5</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -157,11 +157,13 @@ tr:hover td{background:rgba(14,165,233,.05)}
           <select class="filter-select" onchange="filtrarColetas(this.value,'tipo')"><option value="">Todos os tipos</option><option>vaso</option><option>caldeira</option><option>tubulacao</option><option>tanque</option></select>
           <select class="filter-select" onchange="filtrarColetas(this.value,'enq')"><option value="">Todos enquadramentos</option><option value="sim">Enquadrados</option><option value="não enquadra">Não enquadrados</option><option value="dúvida">Dúvida PLH</option></select>
           <select class="filter-select" onchange="filtrarColetas(this.value,'rev')"><option value="">Toda revisão</option><option value="aprovado">Aprovados</option><option value="pendente">Pendentes</option><option value="revisar">A revisar</option></select>
+          <select class="filter-select" onchange="filtrarColetas(this.value,'fluxo')"><option value="">Todos os fluxos</option><option value="campo">🔧 Iniciadas pelo Campo</option><option value="documento">📁 Iniciadas por Documento</option></select>
+          <select class="filter-select" onchange="filtrarColetas(this.value,'pend')"><option value="">Todas as pendências</option><option value="campo">⚠️ Pendência de campo</option><option value="documental">⚠️ Pendência documental</option></select>
           <button class="btn btn-ghost" onclick="carregarColetas()">🔄 Atualizar</button>
         </div>
         <table id="tab-coletas">
-          <thead><tr><th>TAG</th><th>Tipo</th><th>Cliente</th><th>OS</th><th>Enquadramento</th><th>Revisão</th><th>Fotos</th><th>Drive</th><th>Ações</th></tr></thead>
-          <tbody id="tbody-coletas"><tr><td colspan="9" style="text-align:center;color:var(--text3)">Carregando…</td></tr></tbody>
+          <thead><tr><th>TAG</th><th>Tipo</th><th>Fluxo</th><th>Cliente</th><th>OS</th><th>Enquadramento</th><th>Revisão</th><th>Fotos</th><th>Drive</th><th>Ações</th></tr></thead>
+          <tbody id="tbody-coletas"><tr><td colspan="10" style="text-align:center;color:var(--text3)">Carregando…</td></tr></tbody>
         </table>
       </div>
 
@@ -318,7 +320,7 @@ async function api(action, params={}) {
 
 function demoDados(action, params) {
   switch(action) {
-    case 'healthCheck':      return { status:'ok', version:'demo-v1.4', ts: new Date().toISOString() };
+    case 'healthCheck':      return { status:'ok', version:'demo-v1.5', ts: new Date().toISOString() };
     case 'getInspetores':
     case 'getTecnicos':      return { status:'ok', inspetores: CACHE.tecnicos.length ? CACHE.tecnicos : [{id_inspetor:'INS-001',nome:'Inspetor Demo',cargo:'Inspetor NR-13',pin:'1234',ativo:'true',email:'demo@engetap.com.br'}], tecnicos: CACHE.tecnicos };
     case 'getClientesLeads': return { status:'ok', clientes: CACHE.clientes.length ? CACHE.clientes : [{id_cliente:'CLI-ING',nome:'Inglesa — Mineração',cnpj:'00.000.000/0001-00',contato:'João',status_lead:'cliente'}] };
@@ -561,7 +563,7 @@ function filtrarOSStatus(val) {
 
 async function carregarColetas() {
   const tbody = document.getElementById('tbody-coletas');
-  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
   try {
     const r = await api('getEquipamentos');
     if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar coletas');
@@ -582,6 +584,9 @@ function filtrarColetas(val, campo) {
     if (_filtroColetas.tipo && !lower(c.tipo).includes(_filtroColetas.tipo)) return false;
     if (_filtroColetas.enq && !lower(c.enquadra_nr13).includes(_filtroColetas.enq)) return false;
     if (_filtroColetas.rev && !lower(c.status_revisao||'pendente').includes(_filtroColetas.rev)) return false;
+    if (_filtroColetas.fluxo && !lower(c.modo_coleta_inicial||'campo').includes(_filtroColetas.fluxo)) return false;
+    if (_filtroColetas.pend === 'campo' && !s(c.pendencias_campo)) return false;
+    if (_filtroColetas.pend === 'documental' && !s(c.pendencias_documentais)) return false;
     return true;
   });
   renderColetas(filtrado);
@@ -589,16 +594,19 @@ function filtrarColetas(val, campo) {
 
 function renderColetas(lista) {
   const tbody = document.getElementById('tbody-coletas');
-  if (!lista.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Nenhuma coleta encontrada</td></tr>'; return; }
+  if (!lista.length) { tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3)">Nenhuma coleta encontrada</td></tr>'; return; }
   tbody.innerHTML = lista.map(c => {
     const enq = s(c.enquadra_nr13);
     const rev = s(c.status_revisao) || 'pendente';
     const enquadClass = enq.includes('Não enquadra') ? 'pill-warn' : enq.includes('Sim') ? 'pill-ok' : 'pill-gray';
     const revClass = rev === 'aprovado' ? 'pill-ok' : rev === 'revisar' ? 'pill-warn' : 'pill-gray';
     const driveBtn = c.drive_folder_url ? `<a href="${s(c.drive_folder_url)}" target="_blank" class="btn btn-ghost" style="font-size:11px;text-decoration:none">📁</a>` : '—';
+    const fluxoLabel = lower(c.modo_coleta_inicial) === 'documento' ? '📁 Docs' : '🔧 Campo';
+    const fluxoPill = lower(c.modo_coleta_inicial) === 'documento' ? 'pill-pend' : 'pill-blue';
     return `<tr data-search="${lower(c.tag)} ${lower(c.cliente)} ${lower(c.numero_os)}">
       <td><strong>${s(c.tag)||'—'}</strong></td>
       <td>${tipoLabel(s(c.tipo))}</td>
+      <td><span class="pill ${fluxoPill}" style="font-size:10px">${fluxoLabel}</span></td>
       <td>${s(c.cliente)||'—'}</td>
       <td>${s(c.numero_os)||'—'}</td>
       <td><span class="pill ${enquadClass}" style="font-size:10px">${enq.substring(0,25)||'—'}</span></td>
@@ -614,22 +622,41 @@ function renderColetas(lista) {
 }
 
 function renderPendencias(lista) {
-  const pendentes = lista.filter(c => {
+  const el = document.getElementById('content-pendencias');
+  const comPendDoc = lista.filter(c => s(c.pendencias_documentais));
+  const comPendCampo = lista.filter(c => s(c.pendencias_campo));
+  const legado = lista.filter(c => {
     const doc = lower(c.status_documentacao);
     return doc.includes('parcial') || doc.includes('não localizada') || doc.includes('extraviada') || doc.includes('aguardando');
   });
-  const el = document.getElementById('content-pendencias');
-  if (!pendentes.length) { el.innerHTML = '<div class="info-box">✅ Nenhuma pendência documental encontrada.</div>'; return; }
-  el.innerHTML = `<p style="color:var(--text2);margin-bottom:12px">${pendentes.length} equipamento(s) com pendência documental:</p>
-    <table><thead><tr><th>TAG</th><th>Cliente</th><th>OS</th><th>Situação Docs</th><th>Ação</th></tr></thead>
-    <tbody>${pendentes.map(c => `
-      <tr>
-        <td><strong>${s(c.tag)||'—'}</strong></td>
-        <td>${s(c.cliente)||'—'}</td>
-        <td>${s(c.numero_os)||'—'}</td>
-        <td><span class="pill pill-warn">${s(c.status_documentacao).substring(0,25)||'—'}</span></td>
-        <td><button class="btn btn-ghost" style="font-size:11px" onclick="revisar('${s(c.id_equipamento_colect)}')">Revisar</button></td>
-      </tr>`).join('')}</tbody></table>`;
+  const setDocIds = new Set(comPendDoc.map(c => c.id_equipamento_colect));
+  const pendDocUnificadas = [...comPendDoc];
+  legado.forEach(c => { if (!setDocIds.has(c.id_equipamento_colect)) pendDocUnificadas.push(c); });
+
+  let html = '';
+  html += `<h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">📁 Pendências Documentais (${pendDocUnificadas.length})</h3>`;
+  if (!pendDocUnificadas.length) {
+    html += '<div class="info-box" style="margin-bottom:16px">✅ Nenhuma pendência documental.</div>';
+  } else {
+    html += `<table style="margin-bottom:20px"><thead><tr><th>TAG</th><th>Cliente</th><th>OS</th><th>Situação Docs</th><th>Pendências</th><th>Ação</th></tr></thead><tbody>${pendDocUnificadas.map(c => `<tr>
+      <td><strong>${s(c.tag)||'—'}</strong></td><td>${s(c.cliente)||'—'}</td><td>${s(c.numero_os)||'—'}</td>
+      <td><span class="pill pill-warn">${(s(c.status_documentacao)||'—').substring(0,25)}</span></td>
+      <td style="font-size:12px;color:var(--text2);max-width:180px;overflow:hidden;text-overflow:ellipsis">${s(c.pendencias_documentais)||'—'}</td>
+      <td><button class="btn btn-ghost" style="font-size:11px" onclick="verDetalhes('${s(c.id_equipamento_colect)}')">Ver</button></td>
+    </tr>`).join('')}</tbody></table>`;
+  }
+
+  html += `<h3 style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">🔧 Pendências de Campo (${comPendCampo.length})</h3>`;
+  if (!comPendCampo.length) {
+    html += '<div class="info-box">✅ Nenhuma pendência de campo.</div>';
+  } else {
+    html += `<table><thead><tr><th>TAG</th><th>Cliente</th><th>OS</th><th>Pendências de Campo</th><th>Ação</th></tr></thead><tbody>${comPendCampo.map(c => `<tr>
+      <td><strong>${s(c.tag)||'—'}</strong></td><td>${s(c.cliente)||'—'}</td><td>${s(c.numero_os)||'—'}</td>
+      <td style="font-size:12px;color:var(--text2);max-width:240px;overflow:hidden;text-overflow:ellipsis">${s(c.pendencias_campo)||'—'}</td>
+      <td><button class="btn btn-ghost" style="font-size:11px" onclick="verDetalhes('${s(c.id_equipamento_colect)}')">Ver</button></td>
+    </tr>`).join('')}</tbody></table>`;
+  }
+  el.innerHTML = html;
 }
 
 function renderFotos(lista) {
@@ -1023,6 +1050,20 @@ function abrirModalVisualizacao(titulo, bodyHtml) {
   document.getElementById('modal-view').classList.add('open');
 }
 
+
+function renderJsonDetalhes(json, titulo) {
+  if (!json) return '';
+  try {
+    const obj = typeof json === 'string' ? JSON.parse(json) : json;
+    const linhas = Object.entries(obj).map(([campo, valor]) => {
+      const v = valor && typeof valor === 'object' ? (valor.origem || JSON.stringify(valor)) : valor;
+      return `<div style="font-size:12px;color:var(--text2);padding:2px 0"><strong>${s(campo)}:</strong> ${s(v)}</div>`;
+    }).join('');
+    if (!linhas) return '';
+    return `<div style="margin-bottom:14px"><p style="font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">${titulo}</p><div style="background:var(--surf2);border-radius:8px;padding:8px">${linhas}</div></div>`;
+  } catch(_) { return ''; }
+}
+
 function verDetalhes(id) {
   const eq = CACHE.coletas.find(c => s(c.id_equipamento_colect) === id);
   if (!eq) return mostrarFeedback('Equipamento não encontrado', true);
@@ -1067,6 +1108,15 @@ function verDetalhes(id) {
       ['Status Revisão', eq.status_revisao], ['Revisor', eq.revisor],
       ['Data Revisão', eq.data_revisao], ['Obs Revisão', eq.obs_revisao],
     ])}
+    ${bloco('Fluxo / Pendências', [
+      ['Fluxo de Coleta', eq.modo_coleta_inicial === 'documento' ? '📁 Documentação' : '🔧 Campo'],
+      ['Status Campo', eq.status_coleta_campo || '—'],
+      ['Status Documentos', eq.status_coleta_documentos || '—'],
+      ['Pendências de Campo', eq.pendencias_campo || '—'],
+      ['Pendências Documentais', eq.pendencias_documentais || '—'],
+    ])}
+    ${renderJsonDetalhes(eq.origem_respostas_json, 'Origem das Respostas')}
+    ${renderJsonDetalhes(eq.conflitos_json, 'Conflitos')}
   `;
   abrirModalVisualizacao('Detalhes — ' + (s(eq.tag)||id), html);
 }

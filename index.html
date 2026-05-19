@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.5</title>
+<title>ColectTap Manager v1.7</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{--bg:#0d1b2a;--surf:#16283d;--surf2:#1e3450;--surf3:#243d5c;--border:#2a4a6e;--accent:#0ea5e9;--ok:#22c55e;--warn:#f59e0b;--danger:#ef4444;--pend:#a78bfa;--text:#e8f4ff;--text2:#7fb3d0;--text3:#3d6487}
@@ -65,7 +65,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.5</p>
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.7</p>
   <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
   <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
@@ -78,7 +78,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.5</div>
+      <div class="version">ColectTap Manager v1.7</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -527,7 +527,7 @@ async function carregarOS() {
   const tbody = document.getElementById('tbody-os');
   tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Carregando…</td></tr>';
   try {
-    const r = await api('getOSColect');
+    const r = await api('getOSColect', { origem: 'manager' });
     if (!r || r.status === 'erro') throw new Error(r?.mensagem || 'Falha ao carregar OS');
     CACHE.os = r.os || [];
     renderOS(CACHE.os);
@@ -1349,7 +1349,7 @@ function gerarPDFColetas() {
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT2);
-  doc.text('Gerado por ColectTap Manager v1.5  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+  doc.text('Gerado por ColectTap Manager v1.7  ·  Engetap Engenharia  ·  uso interno', ML, 290);
 
   const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
   doc.save(nomeArquivo);

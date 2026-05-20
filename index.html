@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.10</title>
+<title>ColectTap Manager v1.11</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -75,7 +75,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.10</p>
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.11</p>
   <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
   <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
@@ -88,7 +88,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.10</div>
+      <div class="version">ColectTap Manager v1.11</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -374,9 +374,14 @@ function demoDados(action, params) {
     case 'getTecnicos':      return { status:'ok', inspetores: CACHE.tecnicos.length ? CACHE.tecnicos : [{id_inspetor:'INS-001',nome:'Inspetor Demo',cargo:'Inspetor NR-13',pin:'1234',ativo:'true',email:'demo@engetap.com.br'}], tecnicos: CACHE.tecnicos };
     case 'getClientesLeads': return { status:'ok', clientes: CACHE.clientes.length ? CACHE.clientes : [{id_cliente:'CLI-ING',nome:'Inglesa — Mineração',cnpj:'00.000.000/0001-00',contato:'João',status_lead:'cliente'}] };
     case 'getOSColect':      return { status:'ok', os: CACHE.os.length ? CACHE.os : [{id_os:'LNR-2026-001',numero_os:'LNR-001',cliente:'Inglesa — Mineração',descricao:'Levantamento NR-13',data_abertura:'2026-05-13',status:'ativa',id_inspetor_resp:''}] };
-    case 'getEquipamentos':  return { status:'ok', equipamentos: CACHE.coletas.length ? CACHE.coletas : [
-      {id_equipamento_colect:'EQ-001',tag:'VP-01',tipo:'vaso',cliente:'Inglesa',numero_os:'LNR-001',enquadra_nr13:'Sim, enquadra conforme 13.2.1',status_documentacao:'Física completa',status_revisao:'pendente',quantidade_fotos:3,drive_folder_url:''}
-    ]};
+    case 'getEquipamentos':  {
+      // v1.11: filtra por id_os no demo também, para consistência com GAS real
+      const demoEquips = CACHE.coletas.length ? CACHE.coletas : [
+        {id_equipamento_colect:'EQ-001',id_os:'LNR-2026-001',tag:'VP-01',tipo:'vaso',cliente:'Inglesa',numero_os:'LNR-001',enquadra_nr13:'Sim, enquadra conforme 13.2.1',status_documentacao:'Física completa',status_revisao:'pendente',sync_status:'liberado_relatorio',quantidade_fotos:3,drive_folder_url:''}
+      ];
+      const filtrado = params.id_os ? demoEquips.filter(e => s(e.id_os) === s(params.id_os)) : demoEquips;
+      return { status:'ok', equipamentos: filtrado };
+    }
     case 'salvarInspetor':
     case 'salvarTecnico':    { const t={id_inspetor:'INS-'+Date.now(),nome:params.nome||'',cargo:params.cargo||'',pin:params.pin||'',ativo:'true',email:params.email||''}; CACHE.tecnicos.push(t); return {status:'ok',id_inspetor:t.id_inspetor}; }
     case 'atualizarInspetor':{ const idx=CACHE.tecnicos.findIndex(t=>s(t.id_inspetor||t.id_tecnico)===s(params.id_inspetor||params.id_tecnico)); if(idx>=0) Object.assign(CACHE.tecnicos[idx],params); return {status:'ok'}; }
@@ -1408,7 +1413,7 @@ function gerarPDFColetas() {
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT2);
-  doc.text('Gerado por ColectTap Manager v1.10  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+  doc.text('Gerado por ColectTap Manager v1.11  ·  Engetap Engenharia  ·  uso interno', ML, 290);
 
   const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
   doc.save(nomeArquivo);
@@ -1467,12 +1472,18 @@ async function carregarEquipsParaRelatorio() {
   if (!id_os) { document.getElementById('rel-empty').textContent = 'Selecione uma OS.'; return; }
   _relOSAtual = CACHE.os.find(o => s(o.id_os) === id_os) || null;
   try {
-    const r = await api('getEquipamentos', { id_os });
+    // v1.11: passa origem:'manager' para garantir leitura real do GAS (sem cache demo)
+    const r = await api('getEquipamentos', { id_os, origem: 'manager' });
     if (r.status !== 'ok') throw new Error(r.mensagem || 'Erro');
     _relEquipsAtual = r.equipamentos || [];
+    if (!_relEquipsAtual.length) {
+      document.getElementById('rel-empty').textContent =
+        'Nenhum equipamento encontrado para esta OS. Verifique se o Field já enviou dados.';
+      return;
+    }
     renderEquipsRelatorio();
   } catch(e) {
-    document.getElementById('rel-empty').textContent = 'Erro: ' + e.message;
+    document.getElementById('rel-empty').textContent = 'Erro ao carregar equipamentos: ' + e.message;
   }
 }
 

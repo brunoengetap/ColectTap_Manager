@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.11</title>
+<title>ColectTap Manager v1.12</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -75,7 +75,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.11</p>
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.12</p>
   <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
   <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
@@ -88,7 +88,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.11</div>
+      <div class="version">ColectTap Manager v1.12</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -192,43 +192,42 @@ tr:hover td{background:rgba(14,165,233,.05)}
         <div id="content-fotos"><p style="color:var(--text3)">Carregando…</p></div>
       </div>
 
+      <!-- RELATÓRIOS -->
+      <div class="view" id="view-relatorios">
+        <h2 class="page-title">Relatórios NR-13</h2>
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
+          <select id="rel-os-select" class="filter-select" style="min-width:220px" onchange="carregarEquipsParaRelatorio()">
+            <option value="">Selecione uma OS…</option>
+          </select>
+          <button class="btn btn-ghost" onclick="popularSelectOS()">🔄 Atualizar OS</button>
+        </div>
+        <div id="rel-progress-wrap" style="display:none;margin-bottom:16px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px" id="rel-progress-label">Carregando fotos…</div>
+          <div style="background:var(--surf2);border-radius:8px;height:8px;overflow:hidden">
+            <div id="rel-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width .3s"></div>
+          </div>
+        </div>
+        <div id="rel-equip-container" style="display:none">
+          <div class="toolbar" style="margin-bottom:12px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="rel-chk-all" onchange="toggleSelecionarTodos(this.checked)" style="width:16px;height:16px;accent-color:var(--accent)">
+              Selecionar todos
+            </label>
+            <span id="rel-count-label" style="font-size:12px;color:var(--text2);margin-left:auto"></span>
+          </div>
+          <div id="rel-equip-list"></div>
+          <div class="toolbar" style="margin-top:16px;flex-wrap:wrap;gap:8px">
+            <button class="btn btn-primary" onclick="gerarPDFIndividualLote()">📄 PDF Individual (lote)</button>
+            <button class="btn btn-primary" style="background:#7c3aed" onclick="gerarPDFCompleto()">📋 PDF Completo (único)</button>
+            <button class="btn btn-ghost" onclick="gerarPlanilhaXLSX()">📊 Planilha XLSX</button>
+          </div>
+        </div>
+        <div id="rel-empty" style="color:var(--text3);text-align:center;padding:32px 0">
+          Selecione uma OS para ver os equipamentos.
+        </div>
+      </div>
+
     </main>
-  </div>
-</div>
-
-
-<!-- RELATÓRIOS -->
-<div class="view" id="view-relatorios">
-  <h2 class="page-title">Relatórios NR-13</h2>
-  <div class="toolbar" style="flex-wrap:wrap;gap:8px;margin-bottom:16px">
-    <select id="rel-os-select" class="filter-select" style="min-width:220px" onchange="carregarEquipsParaRelatorio()">
-      <option value="">Selecione uma OS…</option>
-    </select>
-    <button class="btn btn-ghost" onclick="popularSelectOS()">🔄 Atualizar OS</button>
-  </div>
-  <div id="rel-progress-wrap" style="display:none;margin-bottom:16px">
-    <div style="font-size:12px;color:var(--text2);margin-bottom:4px" id="rel-progress-label">Carregando fotos…</div>
-    <div style="background:var(--surf2);border-radius:8px;height:8px;overflow:hidden">
-      <div id="rel-progress-bar" style="height:100%;background:var(--accent);width:0%;transition:width .3s"></div>
-    </div>
-  </div>
-  <div id="rel-equip-container" style="display:none">
-    <div class="toolbar" style="margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="rel-chk-all" onchange="toggleSelecionarTodos(this.checked)" style="width:16px;height:16px;accent-color:var(--accent)">
-        Selecionar todos
-      </label>
-      <span id="rel-count-label" style="font-size:12px;color:var(--text2);margin-left:auto"></span>
-    </div>
-    <div id="rel-equip-list"></div>
-    <div class="toolbar" style="margin-top:16px;flex-wrap:wrap;gap:8px">
-      <button class="btn btn-primary" onclick="gerarPDFIndividualLote()">📄 PDF Individual (lote)</button>
-      <button class="btn btn-primary" style="background:#7c3aed" onclick="gerarPDFCompleto()">📋 PDF Completo (único)</button>
-      <button class="btn btn-ghost" onclick="gerarPlanilhaXLSX()">📊 Planilha XLSX</button>
-    </div>
-  </div>
-  <div id="rel-empty" style="color:var(--text3);text-align:center;padding:32px 0">
-    Selecione uma OS para ver os equipamentos.
   </div>
 </div>
 
@@ -1413,7 +1412,7 @@ function gerarPDFColetas() {
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT2);
-  doc.text('Gerado por ColectTap Manager v1.11  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+  doc.text('Gerado por ColectTap Manager v1.12  ·  Engetap Engenharia  ·  uso interno', ML, 290);
 
   const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
   doc.save(nomeArquivo);
@@ -1579,7 +1578,25 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
 
   function ltx(txt) {
     if (!txt) return '';
-    return String(txt).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\x20-\x7E]/g,' ').trim();
+    // Preserva acentos PT-BR via mapeamento direto antes de sanitizar residuais
+    const MAP = {
+      'á':'a','à':'a','â':'a','ã':'a','ä':'a',
+      'é':'e','è':'e','ê':'e','ë':'e',
+      'í':'i','ì':'i','î':'i','ï':'i',
+      'ó':'o','ò':'o','ô':'o','õ':'o','ö':'o',
+      'ú':'u','ù':'u','û':'u','ü':'u',
+      'ç':'c','ñ':'n',
+      'Á':'A','À':'A','Â':'A','Ã':'A','Ä':'A',
+      'É':'E','È':'E','Ê':'E','Ë':'E',
+      'Í':'I','Ì':'I','Î':'I','Ï':'I',
+      'Ó':'O','Ò':'O','Ô':'O','Õ':'O','Ö':'O',
+      'Ú':'U','Ù':'U','Û':'U','Ü':'U',
+      'Ç':'C','Ñ':'N',
+    };
+    return String(txt)
+      .replace(/[áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/g, c => MAP[c] || c)
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .trim();
   }
 
   function ftrEngetap() {
@@ -1763,18 +1780,29 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
 
     if(fotosEquip&&fotosEquip.length){
       y=secTit(y,eq,'8. Fotos da Inspecao');
-      const PW2=(CW-4)/2; let col=0;
+      const PW2=(CW-4)/2; let col=0; let rowMaxH=0;
       fotosEquip.forEach(foto=>{
-        const imgH2=PW2*0.75; y=ck(y,col===0?imgH2+20:0,eq);
+        // Calcular altura proporcional à largura disponível
+        let imgH2=PW2*0.75; // fallback 4:3
+        try {
+          const props=doc.getImageProperties('data:'+foto.mimeType+';base64,'+foto.base64);
+          if(props&&props.width&&props.height) imgH2=PW2*(props.height/props.width);
+        } catch(e){}
+        imgH2=Math.max(30,Math.min(imgH2,PW2*1.5)); // clamp entre 30mm e 1.5x largura
+        if(col===0) rowMaxH=imgH2;
+        else rowMaxH=Math.max(rowMaxH,imgH2);
+        if(col===0) y=ck(y,rowMaxH+20,eq);
         const imgX=ML+col*(PW2+4);
         try{const mt=(foto.mimeType||'').toUpperCase().includes('PNG')?'PNG':'JPEG';doc.addImage('data:'+foto.mimeType+';base64,'+foto.base64,mt,imgX,y,PW2,imgH2);}
         catch(e){doc.setFillColor(220,230,245);doc.rect(imgX,y,PW2,imgH2,'F');}
         const legLines=doc.splitTextToSize(ltx(foto.label||foto.key),PW2-2);
         doc.setFont('helvetica','italic');doc.setFontSize(7);doc.setTextColor(...REL_TEXT2);
         doc.text(legLines[0]||'',imgX,y+imgH2+4);
-        col++;if(col>=2){col=0;y+=imgH2+16;}
+        col++;
+        if(col>=2){col=0;y+=rowMaxH+16;rowMaxH=0;}
       });
-      if(col===1)y+=fotosEquip.length?(PW2*0.75)+16:0;
+      // Se terminou com foto ímpar, avançar y pelo rowMaxH da última linha
+      if(col===1)y+=rowMaxH+16;
       if(s(eq.drive_folder_url)){y=ck(y,8,eq);doc.setFont('helvetica','italic');doc.setFontSize(7.5);doc.setTextColor(...REL_CIANO);doc.text('Drive: '+ltx(s(eq.drive_folder_url)).substring(0,80),ML+2,y+5);y+=8;}
     }
     return y;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.12</title>
+<title>ColectTap Manager v1.13</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -75,7 +75,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
 <!-- LOGIN -->
 <div id="login-screen">
   <h1>ColectTap Manager</h1>
-  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.12</p>
+  <p style="color:var(--text2);font-size:13px">Painel de Gestão · Engetap · NR-13 · v1.13</p>
   <div id="gas-status-login" style="font-size:12px;color:var(--text3);min-height:18px;margin-bottom:4px">Verificando GAS…</div>
   <input type="password" id="pin-input" maxlength="4" placeholder="PIN">
   <button onclick="doLogin()">Entrar</button>
@@ -88,7 +88,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.12</div>
+      <div class="version">ColectTap Manager v1.13</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -1412,7 +1412,7 @@ function gerarPDFColetas() {
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT2);
-  doc.text('Gerado por ColectTap Manager v1.12  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+  doc.text('Gerado por ColectTap Manager v1.13  ·  Engetap Engenharia  ·  uso interno', ML, 290);
 
   const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
   doc.save(nomeArquivo);
@@ -1578,24 +1578,15 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
 
   function ltx(txt) {
     if (!txt) return '';
-    // Preserva acentos PT-BR via mapeamento direto antes de sanitizar residuais
-    const MAP = {
-      'á':'a','à':'a','â':'a','ã':'a','ä':'a',
-      'é':'e','è':'e','ê':'e','ë':'e',
-      'í':'i','ì':'i','î':'i','ï':'i',
-      'ó':'o','ò':'o','ô':'o','õ':'o','ö':'o',
-      'ú':'u','ù':'u','û':'u','ü':'u',
-      'ç':'c','ñ':'n',
-      'Á':'A','À':'A','Â':'A','Ã':'A','Ä':'A',
-      'É':'E','È':'E','Ê':'E','Ë':'E',
-      'Í':'I','Ì':'I','Î':'I','Ï':'I',
-      'Ó':'O','Ò':'O','Ô':'O','Õ':'O','Ö':'O',
-      'Ú':'U','Ù':'U','Û':'U','Ü':'U',
-      'Ç':'C','Ñ':'N',
-    };
+    // Preserva acentos PT-BR (Latin-1 / WinAnsi suportado pelo jsPDF/helvetica)
+    // Remove apenas emojis, símbolos Unicode fora de Latin-1, aspas tipográficas e travessões
     return String(txt)
-      .replace(/[áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ]/g, c => MAP[c] || c)
-      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/[\u2018\u2019]/g, "'")           // aspas simples tipográficas → '
+      .replace(/[\u201C\u201D]/g, '"')           // aspas duplas tipográficas → "
+      .replace(/[\u2013\u2014]/g, '-')           // en-dash / em-dash → -
+      .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')   // emojis e símbolos Unicode altos
+      .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, ' ') // mantém Latin-1 completo
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
@@ -1635,7 +1626,7 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
     doc.text(cliente.toUpperCase(), PW/2, 62, {align:'center'});
     if (cnpj) { doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.text('CNPJ: '+ltx(cnpj), PW/2, 70, {align:'center'}); }
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...REL_AZUL);
-    doc.text('INSPECAO PERIODICA', PW/2, cnpj?82:76, {align:'center'});
+    doc.text('INSPEÇÃO PERIÓDICA', PW/2, cnpj?82:76, {align:'center'});
     const imgY=90, imgH=85;
     const capaKey = s(eq.foto_capa_key);
     const fotosCapa = fotosEquip||[];
@@ -1651,20 +1642,20 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
     doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...REL_DARK);
     doc.text(tag, PW/2, yBase, {align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...REL_TEXT2);
-    doc.text('Numero TAP: '+ltx(s(eq.numero_equip||eq.tag)), PW/2, yBase+8, {align:'center'});
+    doc.text('Número TAP: '+ltx(s(eq.numero_equip||eq.tag)), PW/2, yBase+8, {align:'center'});
     yBase += 28;
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...REL_DARK);
-    doc.text('Divinopolis - MG', PW-MR, yBase, {align:'right'});
-    doc.text('Inspecao realizada em: '+ltx(s(eq.data_coleta||dataHoje)).substring(0,10), PW-MR, yBase+6, {align:'right'});
+    doc.text('Divinópolis - MG', PW-MR, yBase, {align:'right'});
+    doc.text('Inspeção realizada em: '+ltx(s(eq.data_coleta||dataHoje)).substring(0,10), PW-MR, yBase+6, {align:'right'});
     ftrEngetap();
   }
 
-  const SECOES_SUMARIO = ['1. Identificacao do Equipamento','2. Dados de Projeto e Pressao','3. Dispositivos de Seguranca','4. Documentacao','5. Seguranca do Trabalho','6. Enquadramento NR-13','7. Observacoes e Pendencias','8. Fotos da Inspecao'];
+  const SECOES_SUMARIO = ['1. Identificação do Equipamento','2. Dados de Projeto e Pressão','3. Dispositivos de Segurança','4. Documentação','5. Segurança do Trabalho','6. Enquadramento NR-13','7. Observações e Pendências','8. Fotos da Inspeção'];
 
   function gerarSumario(eq) {
     doc.setFillColor(255,255,255); doc.rect(0,0,PW,PH,'F');
     doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(...REL_AZUL);
-    doc.text('SUMARIO', PW/2, 36, {align:'center'});
+    doc.text('SUMÁRIO', PW/2, 36, {align:'center'});
     let y = 54;
     SECOES_SUMARIO.forEach((sec,i) => {
       doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(...REL_DARK);
@@ -1724,62 +1715,62 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
     y=ck(y,8,eq);doc.setFillColor(230,238,250);doc.rect(ML,y,CW,7,'F');
     doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(...REL_DARK);
     const osLbl=ltx((_relOSAtual?'OS: '+s(_relOSAtual.numero_os)+'  |  Cliente: '+s(eq.cliente):'')+
-                    '  |  Tecnico: '+s(eq.inspetor)+'  |  Data: '+s(eq.data_coleta||'').substring(0,10));
+                    '  |  Técnico: '+s(eq.inspetor)+'  |  Data: '+s(eq.data_coleta||'').substring(0,10));
     doc.text(osLbl,ML+2,y+5);y+=9;
 
-    y=secTit(y,eq,'1. Identificacao do Equipamento');
+    y=secTit(y,eq,'1. Identificação do Equipamento');
     y=row2(y,eq,[{l:'TAG',v:eq.tag},{l:'Tipo',v:eq.tipo}]);
-    y=row2(y,eq,[{l:'Fabricante',v:eq.fabricante},{l:'Numero Equip.',v:eq.numero_equip}]);
-    y=row2(y,eq,[{l:'Ano Fabricacao',v:eq.ano_fabricacao},{l:'Categoria',v:eq.categoria}]);
-    y=row2(y,eq,[{l:'Localizacao / Setor',v:eq.localizacao||eq.setor},{l:'Codigo Projeto',v:eq.codigo_projeto}]);
-    y=row2(y,eq,[{l:'Placa Indelevel',v:eq.placa_indelevel},{l:'Fluido / Classe',v:s(eq.fluido)+(eq.classe_fluido?' / '+s(eq.classe_fluido):'')+''}]);
+    y=row2(y,eq,[{l:'Fabricante',v:eq.fabricante},{l:'Número Equip.',v:eq.numero_equip}]);
+    y=row2(y,eq,[{l:'Ano Fabricação',v:eq.ano_fabricacao},{l:'Categoria',v:eq.categoria}]);
+    y=row2(y,eq,[{l:'Localização / Setor',v:eq.localizacao||eq.setor},{l:'Código Projeto',v:eq.codigo_projeto}]);
+    y=row2(y,eq,[{l:'Placa Indelével',v:eq.placa_indelevel},{l:'Fluido / Classe',v:s(eq.fluido)+(eq.classe_fluido?' / '+s(eq.classe_fluido):'')+''}]);
 
-    y=secTit(y,eq,'2. Dados de Projeto e Pressao');
-    y=row2(y,eq,[{l:'PMTA (kgf/cm2)',v:eq.pmta},{l:'P. Trabalho',v:eq.pressao_trabalho}]);
+    y=secTit(y,eq,'2. Dados de Projeto e Pressão');
+    y=row2(y,eq,[{l:'PMTA (kgf/cm²)',v:eq.pmta},{l:'P. Trabalho',v:eq.pressao_trabalho}]);
     y=row2(y,eq,[{l:'P. Teste',v:eq.pressao_teste},{l:'Temperatura',v:eq.temperatura}]);
-    y=row2(y,eq,[{l:'Volume (m3)',v:eq.volume},{l:'Material',v:eq.material}]);
-    y=row2(y,eq,[{l:'Diametro',v:eq.diametro},{l:'Comprimento',v:eq.comprimento}]);
+    y=row2(y,eq,[{l:'Volume (m³)',v:eq.volume},{l:'Material',v:eq.material}]);
+    y=row2(y,eq,[{l:'Diâmetro',v:eq.diametro},{l:'Comprimento',v:eq.comprimento}]);
     y=row2(y,eq,[{l:'Esp. Parede',v:eq.espessura_parede},{l:'Isolamento',v:eq.isolamento}]);
-    if(s(eq.tipo)==='caldeira'){y=row2(y,eq,[{l:'Cap. Vapor (kg/h)',v:eq.capacidade_vapor},{l:'Area Aquecimento',v:eq.area_aquecimento}]);y=row2(y,eq,[{l:'Combustivel',v:eq.combustivel},{l:'P. Projeto',v:eq.pressao_projeto}]);}
+    if(s(eq.tipo)==='caldeira'){y=row2(y,eq,[{l:'Cap. Vapor (kg/h)',v:eq.capacidade_vapor},{l:'Área Aquecimento',v:eq.area_aquecimento}]);y=row2(y,eq,[{l:'Combustível',v:eq.combustivel},{l:'P. Projeto',v:eq.pressao_projeto}]);}
     if(s(eq.tipo)==='tanque'){y=row2(y,eq,[{l:'Teto',v:eq.teto},{l:'Revestimento',v:eq.revestimento}]);}
 
-    y=secTit(y,eq,'3. Dispositivos de Seguranca');
-    y=row2(y,eq,[{l:'Manometro',v:eq.possui_manometro},{l:'Man. Calibrado',v:eq.manometro_calibrado}]);
-    y=row2(y,eq,[{l:'Cert. Manometro',v:eq.cert_manometro},{l:'Venc. Calibracao',v:eq.venc_manometro}]);
-    y=row2(y,eq,[{l:'PSV / Valv. Seg.',v:eq.possui_valvula},{l:'PSV Calibrada',v:eq.valvula_calibrada}]);
+    y=secTit(y,eq,'3. Dispositivos de Segurança');
+    y=row2(y,eq,[{l:'Manômetro',v:eq.possui_manometro},{l:'Man. Calibrado',v:eq.manometro_calibrado}]);
+    y=row2(y,eq,[{l:'Cert. Manômetro',v:eq.cert_manometro},{l:'Venc. Calibração',v:eq.venc_manometro}]);
+    y=row2(y,eq,[{l:'PSV / Válv. Seg.',v:eq.possui_valvula},{l:'PSV Calibrada',v:eq.valvula_calibrada}]);
     y=row2(y,eq,[{l:'Cert. PSV',v:eq.cert_valvula},{l:'PA da PSV',v:eq.pa_valvula}]);
     y=row2(y,eq,[{l:'Purgador',v:eq.possui_purgador},{l:'DCBI',v:eq.possui_dcbi}]);
-    y=row2(y,eq,[{l:'Valv. Retencao',v:eq.possui_valvula_retencao},{l:'Ind. Nivel',v:eq.possui_indicador_nivel}]);
+    y=row2(y,eq,[{l:'Válv. Retenção',v:eq.possui_valvula_retencao},{l:'Ind. Nível',v:eq.possui_indicador_nivel}]);
 
-    y=secTit(y,eq,'4. Documentacao');
-    y=row1(y,eq,'Status Documentacao',eq.status_documentacao);
+    y=secTit(y,eq,'4. Documentação');
+    y=row1(y,eq,'Status Documentação',eq.status_documentacao);
     y=row1(y,eq,'Documentos Presentes',eq.documentos_presentes);
     y=row1(y,eq,'Documentos Ausentes',eq.documentos_ausentes);
     y=row1(y,eq,'Documentos a Receber',eq.documentos_a_receber);
 
-    y=secTit(y,eq,'5. Seguranca do Trabalho');
+    y=secTit(y,eq,'5. Segurança do Trabalho');
     y=row2(y,eq,[{l:'Trab. em Altura',v:eq.trabalho_altura},{l:'Necessita TH',v:eq.necessita_th}]);
-    y=row2(y,eq,[{l:'Espaco Confinado',v:eq.espaco_confinado},{l:'Scaffold',v:eq.necessita_scaffold}]);
-    y=row1(y,eq,'Ensaios END Necessarios',eq.ensaios_nd_necessarios);
+    y=row2(y,eq,[{l:'Espaço Confinado',v:eq.espaco_confinado},{l:'Scaffold',v:eq.necessita_scaffold}]);
+    y=row1(y,eq,'Ensaios END Necessários',eq.ensaios_nd_necessarios);
     y=row1(y,eq,'Processo / Fluido',eq.processo);
 
     y=secTit(y,eq,'6. Enquadramento NR-13');
     y=row1(y,eq,'Enquadramento',eq.enquadra_nr13);
     y=row1(y,eq,'Base de Enquadramento',eq.base_enquadramento);
-    if(s(eq.motivo_nao_enquadramento))y=row1(y,eq,'Motivo Nao Enquadramento',eq.motivo_nao_enquadramento);
-    if(s(eq.situacao_nr13))y=row1(y,eq,'Situacao NR-13',eq.situacao_nr13);
+    if(s(eq.motivo_nao_enquadramento))y=row1(y,eq,'Motivo Não Enquadramento',eq.motivo_nao_enquadramento);
+    if(s(eq.situacao_nr13))y=row1(y,eq,'Situação NR-13',eq.situacao_nr13);
 
     if(s(eq.obs_gerais)||s(eq.obs_inspetor)||s(eq.risco_observado)||s(eq.pendencias_campo)||s(eq.pendencias_documentais)){
-      y=secTit(y,eq,'7. Observacoes e Pendencias');
+      y=secTit(y,eq,'7. Observações e Pendências');
       if(s(eq.obs_gerais)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...REL_DARK);doc.text('Obs. Gerais:',ML+2,y+5);y+=7;y=txtBloco(y,eq,eq.obs_gerais);}
       if(s(eq.obs_inspetor)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('Obs. Inspetor:',ML+2,y+5);y+=7;y=txtBloco(y,eq,eq.obs_inspetor);}
       if(s(eq.risco_observado)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.text('Risco Observado:',ML+2,y+5);y+=7;y=txtBloco(y,eq,eq.risco_observado);}
-      if(s(eq.pendencias_campo)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(220,50,50);doc.text('Pendencias Campo:',ML+2,y+5);doc.setTextColor(...REL_DARK);y+=7;y=txtBloco(y,eq,eq.pendencias_campo);}
-      if(s(eq.pendencias_documentais)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(150,100,200);doc.text('Pendencias Documentais:',ML+2,y+5);doc.setTextColor(...REL_DARK);y+=7;y=txtBloco(y,eq,eq.pendencias_documentais);}
+      if(s(eq.pendencias_campo)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(220,50,50);doc.text('Pendências Campo:',ML+2,y+5);doc.setTextColor(...REL_DARK);y+=7;y=txtBloco(y,eq,eq.pendencias_campo);}
+      if(s(eq.pendencias_documentais)){y=ck(y,6,eq);doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(150,100,200);doc.text('Pendências Documentais:',ML+2,y+5);doc.setTextColor(...REL_DARK);y+=7;y=txtBloco(y,eq,eq.pendencias_documentais);}
     }
 
     if(fotosEquip&&fotosEquip.length){
-      y=secTit(y,eq,'8. Fotos da Inspecao');
+      y=secTit(y,eq,'8. Fotos da Inspeção');
       const PW2=(CW-4)/2; let col=0; let rowMaxH=0;
       fotosEquip.forEach(foto=>{
         // Calcular altura proporcional à largura disponível

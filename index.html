@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ColectTap Manager v1.13</title>
+<title>ColectTap Manager v1.14</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -88,7 +88,7 @@ tr:hover td{background:rgba(14,165,233,.05)}
   <div class="layout">
     <aside class="sidebar">
       <h2>Manager</h2>
-      <div class="version">ColectTap Manager v1.13</div>
+      <div class="version">ColectTap Manager v1.14</div>
       <div id="gas-status-app" style="font-size:11px;color:var(--text3);margin-bottom:12px;padding:4px 8px;border-radius:6px;background:var(--surf2)">GAS: —</div>
       <nav>
         <div class="menu-item active" onclick="showView('dashboard', this)">📊 Dashboard</div>
@@ -1412,7 +1412,7 @@ function gerarPDFColetas() {
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7);
   doc.setTextColor(...TEXT2);
-  doc.text('Gerado por ColectTap Manager v1.13  ·  Engetap Engenharia  ·  uso interno', ML, 290);
+  doc.text('Gerado por ColectTap Manager v1.14  ·  Engetap Engenharia  ·  uso interno', ML, 290);
 
   const nomeArquivo = 'ColectTap_Coletas_' + agora.toISOString().substring(0,10) + '.pdf';
   doc.save(nomeArquivo);
@@ -1756,9 +1756,22 @@ async function _gerarPDFEquipamentos(equips, nomeArquivo) {
 
     y=secTit(y,eq,'6. Enquadramento NR-13');
     y=row1(y,eq,'Enquadramento',eq.enquadra_nr13);
+    if(s(eq.enq_motivo))y=row1(y,eq,'Motivos (NR-13 13.2.1)',eq.enq_motivo);
     y=row1(y,eq,'Base de Enquadramento',eq.base_enquadramento);
     if(s(eq.motivo_nao_enquadramento))y=row1(y,eq,'Motivo Não Enquadramento',eq.motivo_nao_enquadramento);
     if(s(eq.situacao_nr13))y=row1(y,eq,'Situação NR-13',eq.situacao_nr13);
+
+    // F2: aviso de conflito entre coleta de campo e documentação
+    try {
+      const conf = eq.conflitos_json ? JSON.parse(eq.conflitos_json) : null;
+      if (conf && typeof conf === 'object' && Object.keys(conf).length > 0) {
+        y=ck(y,10,eq);
+        doc.setFillColor(120,0,0); doc.rect(ML,y,CW,8,'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(255,200,200);
+        doc.text('⚠ CONFLITOS DETECTADOS entre coleta de campo e documentação — revisar antes de assinar.',ML+2,y+5.5);
+        y+=10; doc.setTextColor(...REL_DARK);
+      }
+    } catch(e) {}
 
     if(s(eq.obs_gerais)||s(eq.obs_inspetor)||s(eq.risco_observado)||s(eq.pendencias_campo)||s(eq.pendencias_documentais)){
       y=secTit(y,eq,'7. Observações e Pendências');
